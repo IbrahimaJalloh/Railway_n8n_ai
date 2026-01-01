@@ -116,7 +116,7 @@ def verify_api_key(request: Request, db: Session = Depends(get_db)) -> str:
     return api_key
 
 # ===== OPENAI =====
-client = OpenAI(api_key=OPENAI_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ===== MODELS =====
 class ChatRequest(BaseModel):
