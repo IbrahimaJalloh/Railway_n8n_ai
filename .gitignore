@@ -38,7 +38,10 @@ __pycache__/
 *$py.class
 venv/
 env/
+data/
 pip-log.txt
+app_old.py
+local.db
 pip-delete-this-directory.txt
 .tox/
 .coverage
