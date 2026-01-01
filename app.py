@@ -66,7 +66,10 @@ class UsageLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # Créer tables
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    logger.warning(f" Database creation failed (expected in Docker): {e}")
 
 # ===== FASTAPI APP =====
 app = FastAPI(
