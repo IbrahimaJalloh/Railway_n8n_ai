@@ -143,14 +143,28 @@ class APIKeyResponse(BaseModel):
 
 # ===== ROUTES =====
 
-@app.get("/health", response_model=HealthResponse)
-@limiter.limit("100/minute")
-async def health(request: Request):
-    """Health check public."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+@app.on_event("startup")
+async def startup():
+    """Initialisation au démarrage."""
+    try:
+        # Teste connexion DB
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        print("✅ Database connectée")
+    except Exception as e:
+        print(f"⚠️ Database erreur: {e}")
+    
+    # Vérifie OpenAI
+    if not OPENAI_API_KEY:
+        print("❌ OPENAI_API_KEY manquante!")
+    else:
+        print("✅ OPENAI_API_KEY configurée")
+    
+    print("✅ FastAPI Pro API lancée")
+    print(f"📍 PORT: {os.getenv('PORT', 3000)}")
+    print(f"📍 DATABASE: {DATABASE_URL}")
+    print(f"✨ Health endpoint: /health")
 
 @app.post("/chat", response_model=ChatResponse)
 @limiter.limit("50/minute")
