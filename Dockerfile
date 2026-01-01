@@ -13,12 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copie le code
 COPY . .
 
-# Copie le script entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 # Expose le port (informationnel pour Railway)
 EXPOSE 3000
 
-# Lance via le script entrypoint
-CMD ["/entrypoint.sh"]
+# Lance l'app directement avec Python (gère PORT correctement)
+CMD ["python", "-c", "import os, subprocess, sys; subprocess.run([sys.executable, '-m', 'uvicorn', 'app:app', '--host', '0.0.0.0', '--port', os.getenv('PORT', '3000')])"]
