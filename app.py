@@ -1,6 +1,7 @@
-# app_pro.py - API FastAPI pro sécurisée + monétisée
+# app.py - API FastAPI pro sécurisée + monétisée
 import os
 import secrets
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, Request, status
@@ -15,19 +16,27 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 import logging
 
+# ===== CHARGER LES VARIABLES D'ENVIRONNEMENT =====
+from dotenv import load_dotenv
+load_dotenv()  # ← IMPORTANT : Charge avant d'utiliser os.getenv()
+
 # ===== CONFIGURATION =====
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/local.db")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
 MASTER_API_KEY = os.getenv("MASTER_API_KEY", "sk-master-dev-key-change-in-prod")
+PORT = int(os.getenv("PORT", 8000))
 
 # ===== LOGGING =====
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===== DATABASE =====
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -99,7 +108,7 @@ def verify_api_key(request: Request, db: Session = Depends(get_db)) -> str:
     
     api_key = auth_header.split(" ")[1]
     
-    # Vérify dans DB
+    # Verify dans DB
     db_key = db.query(APIKey).filter(APIKey.key == api_key, APIKey.is_active == 1).first()
     if not db_key:
         logger.warning(f"API Key invalide: {api_key[:10]}...")
@@ -116,7 +125,12 @@ def verify_api_key(request: Request, db: Session = Depends(get_db)) -> str:
     return api_key
 
 # ===== OPENAI =====
-client = OpenAI(api_key=OPENAI_API_KEY)
+if OPENAI_API_KEY:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    logger.info("✅ OpenAI client initialized")
+else:
+    client = None
+    logger.warning("⚠️  OPENAI_API_KEY not configured!")
 
 # ===== MODELS =====
 class ChatRequest(BaseModel):
@@ -141,33 +155,56 @@ class APIKeyResponse(BaseModel):
     name: str
     created_at: str
 
-# ===== ROUTES =====
-
+# ===== STARTUP EVENT =====
 @app.on_event("startup")
 async def startup():
     """Initialisation au démarrage."""
+    logger.info("=" * 60)
+    logger.info("🚀 FastAPI Pro API - Démarrage")
+    logger.info("=" * 60)
+    
     try:
         # Teste connexion DB
         db = SessionLocal()
         db.execute("SELECT 1")
         db.close()
-        print("✅ Database connectée")
+        logger.info("✅ Database connectée")
     except Exception as e:
-        print(f"⚠️ Database erreur: {e}")
+        logger.error(f"❌ Database erreur: {e}")
     
     # Vérifie OpenAI
-    if not OPENAI_API_KEY:
-        print("❌ OPENAI_API_KEY manquante!")
+    if OPENAI_API_KEY:
+        logger.info("✅ OPENAI_API_KEY configurée")
     else:
-        print("✅ OPENAI_API_KEY configurée")
+        logger.error("❌ OPENAI_API_KEY manquante!")
     
-    print("✅ FastAPI Pro API lancée")
-    print(f"📍 PORT: {os.getenv('PORT', 3000)}")
-    print(f"📍 DATABASE: {DATABASE_URL}")
-    print(f"✨ Health endpoint: /health")
+    logger.info(f"📍 PORT: {PORT}")
+    logger.info(f"📍 DATABASE: {DATABASE_URL}")
+    logger.info(f"📍 RATE_LIMIT: {RATE_LIMIT_ENABLED}")
+    logger.info("✨ Documentation: http://localhost:{PORT}/docs")
+    logger.info("=" * 60)
+
+# ===== ROUTES =====
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Vérification santé de l'API."""
+    return HealthResponse(
+        status="ok",
+        timestamp=datetime.utcnow().isoformat()
+    )
+
+@app.get("/")
+async def root():
+    """Route racine."""
+    return {
+        "message": "🚀 FastAPI Pro API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
 @app.post("/chat", response_model=ChatResponse)
-@limiter.limit("50/minute")
 async def chat(
     req: ChatRequest,
     request: Request,
@@ -175,7 +212,12 @@ async def chat(
     api_key: str = Depends(verify_api_key)
 ):
     """Chat IA sécurisé (authentification + rate-limit)."""
-    import time
+    if not client:
+        raise HTTPException(
+            status_code=500,
+            detail="OpenAI API not configured"
+        )
+    
     start_time = time.time()
     
     try:
@@ -206,7 +248,7 @@ async def chat(
         db.add(usage)
         db.commit()
         
-        logger.info(f"Chat: {tokens} tokens, {cost_cents/100:.2f}$ (key: {api_key[:10]}...)")
+        logger.info(f"✅ Chat: {tokens} tokens, ${cost_cents/100:.2f} (key: {api_key[:10]}...)")
         
         return ChatResponse(
             reply=reply,
@@ -215,7 +257,7 @@ async def chat(
         )
     
     except Exception as e:
-        logger.error(f"Chat error: {str(e)}")
+        logger.error(f"❌ Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/admin/keys", response_model=APIKeyResponse)
@@ -238,7 +280,7 @@ async def create_api_key(
     db.add(db_key)
     db.commit()
     
-    logger.info(f"Created key for {req.owner_email}")
+    logger.info(f"✅ Created API key for {req.owner_email}")
     
     return APIKeyResponse(
         key=new_key,  # À copier immédiatement
@@ -268,15 +310,30 @@ async def get_usage(
         "total_cost_usd": total_cost_cents / 100
     }
 
-@app.on_event("startup")
-async def startup():
-    print("✅ FastAPI Pro API lancée")
-    print(f"📍 OPENAI_API_KEY: {('✅' if OPENAI_API_KEY else '❌')}")
-    print(f"📍 DATABASE: {DATABASE_URL}")
-    print(f"📍 RATE_LIMIT: {RATE_LIMIT_ENABLED}")
-    print(f"✨ Endpoints: /docs, /chat, /health, /admin/*")
+@app.get("/admin/keys")
+async def list_api_keys(
+    master_key: str,
+    db: Session = Depends(get_db)
+):
+    """Liste toutes les clés API."""
+    if master_key != MASTER_API_KEY:
+        raise HTTPException(status_code=403, detail="Master key invalide")
+    
+    keys = db.query(APIKey).all()
+    return {
+        "total_keys": len(keys),
+        "keys": [
+            {
+                "name": k.name,
+                "owner_email": k.owner_email,
+                "created_at": k.created_at.isoformat(),
+                "requests_count": k.requests_count,
+                "is_active": bool(k.is_active)
+            }
+            for k in keys
+        ]
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 3000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
