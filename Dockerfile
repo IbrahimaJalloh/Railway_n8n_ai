@@ -13,14 +13,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copie le code
 COPY . .
 
-# Expose le port (informationnel)
-EXPOSE 3000
-
-# ✅ OPTION 1 : Avec script shell (RECOMMANDÉE)
-# Crée un script entrypoint.sh qui gère la variable PORT correctement
+# Copie le script entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-CMD ["/entrypoint.sh"]
 
-# ✅ OPTION 2 : Directement avec Python (ALTERNATIVE)
-# CMD ["python", "-c", "import os, subprocess, sys; subprocess.run([sys.executable, '-m', 'uvicorn', 'app_pro:app', '--host', '0.0.0.0', '--port', os.getenv('PORT', '3000')])"]
+# Expose le port (informationnel pour Railway)
+EXPOSE 3000
+
+# Lance via le script entrypoint
+CMD ["/entrypoint.sh"]

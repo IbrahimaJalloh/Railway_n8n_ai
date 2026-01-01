@@ -8,4 +8,4 @@ PORT=${PORT:-3000}
 echo "🚀 Démarrage de l'application sur le port $PORT..."
 
 # Lance uvicorn
-exec uvicorn app_pro:app --host 0.0.0.0 --port "$PORT"
+exec uvicorn app:app --host 0.0.0.0 --port "$PORT"
