@@ -53,6 +53,10 @@ coverage.xml
 *.log
 htmlcov/
 .nox/
+*.save
+*.bak
+*.tmp
+cat
 
 # ========================================
 # NODE / N8N
@@ -103,3 +107,4 @@ logs/
 !.env.example
 !.env.template
 !.gitignore
+requirements.txt
